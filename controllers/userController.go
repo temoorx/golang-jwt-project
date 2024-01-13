@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"fmt"
+	"go/token"
 	"log"
 	"net/http"
 	"time"
@@ -44,6 +45,10 @@ func Signup() gin.HandlerFunc {
 			log.Panic(err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "error occurred while taking email"})
 		}
+
+		password := HashPassword(*user.Password)
+		user.Password = &password
+
 		count, err := userCollection.CountDocuments(ctx, bson.M{"phone": user.Phone})
 		defer cancel()
 		if err != nil {
@@ -92,22 +97,44 @@ func Login() gin.HandlerFunc {
 
 		passwordIsValid, msg := VerifyPassword(*user.Password, *foundUser.Password)
 		defer cancel()
+		if passwordIsValid != true {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": msg})
+			return
+		}
+		if foundUser.Email == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "user not found"})
+		}
+		token,refreshToken, _ := helper.GenerateAllTokens(*foundUser.Email, *foundUser.First_name, *foundUser.Last_name, *foundUser.User_type, *foundUser.User_id)
+	helper.UpdateAllTokens(token, refreshToken, *foundUser.User_id)
+	err= userCollection.FindOne(ctx, bson.M{"user_id": foundUser.User_id}).Decode(&foundUser)
+
+	if err != nil{
+c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	}
+	c.JSON(http.StatusOK, foundUser)
+
 	}
 
 }
-func VerifyPassword(userPassword string, providedPassowrd string  ) (bool, string){
-	err := bcrypt.CompareHashAndPassword([]byte (providedPassowrd), []byte(userPassword))
+func VerifyPassword(userPassword string, providedPassowrd string) (bool, string) {
+	err := bcrypt.CompareHashAndPassword([]byte(providedPassowrd), []byte(userPassword))
 	check := true
 	msg := ""
 
-	if err != nil{
-		msg= fmt.Sprint("email of password is not correct ")
+	if err != nil {
+		msg = fmt.Sprint("email of password is not correct ")
 		check = false
 	}
 	return check, msg
 }
 
-func HashPassword() {}
+func HashPassword(password string) string {
+	bytes, err :=bcrypt.GenerateFromPassword([]byte(password), 14)
+	if err != nil {
+		log.Panic(err)
+	}
+	return string(bytes)
+}
 
 func GetUsers() {}
 
