@@ -180,7 +180,9 @@ func GetUsers() gin.HandlerFunc {
 			{"$project", bson.D{
 				{"_id", 0},
 				{"total_count", 1},
-				{"user_items", bson.D{{"$slice", bson.A{"$data", (page - 1) * recordPerPage, recordPerPage}}}},
+				//get the first 10 items
+				{"data", bson.D{{"$slice", []interface{}{"$data", (page - 1) * recordPerPage, recordPerPage}}}},
+				// {"user_items", bson.D{{"$slice", []interface{}{"$data", (page - 1) * recordPerPage, recordPerPage}}}},
 			},
 			}}
 
