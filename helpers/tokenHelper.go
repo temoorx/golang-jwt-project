@@ -2,6 +2,7 @@ package helper
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"time"
@@ -54,13 +55,12 @@ func GenerateAllTokens(email string, firstName string, lastName string, userType
 	return token, refreshToken, err
 }
 
-func UpdateAllTokens(signedToken string, signedRefreshToken string, userId string){
+func UpdateAllTokens(signedToken string, signedRefreshToken string, userId string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
 
 	var updateObj primitive.D
 	updateObj = append(updateObj, bson.E{"token", signedToken})
 	updateObj = append(updateObj, bson.E{"refreshToken", signedRefreshToken})
-    
 
 	Updated_at, _ := time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
 	updateObj = append(updateObj, bson.E{"Updated_at", Updated_at})
@@ -69,7 +69,7 @@ func UpdateAllTokens(signedToken string, signedRefreshToken string, userId strin
 	opt := options.UpdateOptions{
 		Upsert: &upsert,
 	}
-	_, err :=userCollection.UpdateOne(
+	_, err := userCollection.UpdateOne(
 		ctx,
 		filter,
 		bson.D{
@@ -80,9 +80,35 @@ func UpdateAllTokens(signedToken string, signedRefreshToken string, userId strin
 
 	defer cancel()
 
-	if err != nil{
+	if err != nil {
 		log.Panic(err)
 		return
 	}
 	return
+}
+
+func ValidateToken(sidnedToken string) (claims *SignedDetails, msg string) {
+	token, err := jwt.ParseWithClaims(
+		sidnedToken,
+		&SignedDetails{},
+		func(token *jwt.Token) (interface{}, error) {
+			return []byte(SECRET_KEY), nil
+		},
+	)
+	if err != nil {
+		msg = err.Error()
+		return
+	}
+	claims, ok := token.Claims.(*SignedDetails)
+
+	if !ok {
+		msg = fmt.Sprintf("the token is invalid")
+		msg = err.Error()
+	}
+	if claims.ExpiresAt.Time.Unix() < time.Now().Local().Unix() {
+		msg = fmt.Sprint("token is expired")
+		msg = err.Error()
+		return
+	}
+	return claims, msg
 }
