@@ -45,7 +45,7 @@ func GenerateAllTokens(email string, firstName string, lastName string, userType
 		},
 	}
 	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(SECRET_KEY))
-	refreshToken, err := jwt.NewWithClaims(jwt.SigningMethodES256, refreshClaims).SignedString([]byte(SECRET_KEY))
+	refreshToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims).SignedString([]byte(SECRET_KEY))
 
 	if err != nil {
 		log.Panic(err)
@@ -87,9 +87,9 @@ func UpdateAllTokens(signedToken string, signedRefreshToken string, userId strin
 	return
 }
 
-func ValidateToken(sidnedToken string) (claims *SignedDetails, msg string) {
+func ValidateToken(signedToken string) (claims *SignedDetails, msg string) {
 	token, err := jwt.ParseWithClaims(
-		sidnedToken,
+		signedToken,
 		&SignedDetails{},
 		func(token *jwt.Token) (interface{}, error) {
 			return []byte(SECRET_KEY), nil
@@ -97,18 +97,19 @@ func ValidateToken(sidnedToken string) (claims *SignedDetails, msg string) {
 	)
 	if err != nil {
 		msg = err.Error()
-		return
+		return nil, msg // Return nil for claims in case of an error
 	}
-	claims, ok := token.Claims.(*SignedDetails)
 
+	claims, ok := token.Claims.(*SignedDetails)
 	if !ok {
 		msg = fmt.Sprintf("the token is invalid")
-		msg = err.Error()
+		return nil, msg // Return nil for claims when the token is invalid
 	}
-	if claims.ExpiresAt.Time.Unix() < time.Now().Local().Unix() {
+
+	if claims.ExpiresAt.Time.Unix() < time.Now().Unix() {
 		msg = fmt.Sprint("token is expired")
-		msg = err.Error()
-		return
+		return nil, msg // Return nil for claims when the token is expired
 	}
-	return claims, msg
+
+	return claims, "" // No error, return nil for msg
 }

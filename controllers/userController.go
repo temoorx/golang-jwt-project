@@ -23,47 +23,60 @@ var userCollection *mongo.Collection = database.OpenCollection(database.Client, 
 var validate = validator.New()
 
 func SignUp() gin.HandlerFunc {
-
 	return func(c *gin.Context) {
 		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
 		var user models.User
 
 		if err := c.BindJSON(&user); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			cancel()
 			return
 		}
+
 		validationErr := validate.Struct(user)
 		if validationErr != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": validationErr.Error()})
+			cancel()
 			return
 		}
-		count, err := userCollection.CountDocuments(ctx, bson.M{"email": user.Email})
 
-		defer cancel()
-
+		// Check for existing email or phone number in a single query
+		count, err := userCollection.CountDocuments(ctx, bson.M{
+			"$or": []bson.M{
+				{"email": user.Email},
+				{"phone": user.Phone},
+			},
+		})
 		if err != nil {
 			log.Panic(err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "error occurred while taking email"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "error occurred while checking email and phone"})
+			cancel()
+			return
+		}
+
+		if count > 0 {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "this email or phone number already exists"})
+			cancel()
+			return
 		}
 
 		password := HashPassword(*user.Password)
 		user.Password = &password
 
-		count, err = userCollection.CountDocuments(ctx, bson.M{"phone": user.Phone})
-		defer cancel()
-		if err != nil {
-			log.Panic(err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "error while checking for the phone number"})
-		}
+		// Other user-related operations...
 
-		if count > 0 {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "this email or phone number already exists"})
-		}
-		user.Created_at, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
-		user.Updated_at, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
+		user.Created_at = time.Now()
+		user.Updated_at = time.Now()
 		user.ID = primitive.NewObjectID()
 		user.User_id = user.ID.Hex()
-		token, refreshToken, _ := helper.GenerateAllTokens(*user.Email, *user.First_name, *user.Last_name, *user.User_type, user.User_id)
+
+		token, refreshToken, tokenErr := helper.GenerateAllTokens(*user.Email, *user.First_name, *user.Last_name, *user.User_type, user.User_id)
+		if tokenErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "error generating tokens"})
+			cancel()
+			return
+		}
+
 		user.Token = &token
 		user.Refresh_token = &refreshToken
 
@@ -71,13 +84,15 @@ func SignUp() gin.HandlerFunc {
 		if insertErr != nil {
 			msg := fmt.Sprintf("User item was not created")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": msg})
+			cancel()
 			return
 		}
-		defer cancel()
-		c.JSON(http.StatusOK, resultInsertionNumber)
 
+		cancel()
+		c.JSON(http.StatusOK, resultInsertionNumber)
 	}
 }
+
 func Login() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
@@ -151,8 +166,8 @@ func GetUsers() gin.HandlerFunc {
 		if err1 != nil || page < 1 {
 			page = 1
 		}
-		startIndex := (page - 1) * recordPerPage
-		startIndex, err = strconv.Atoi(c.Query("startIndex"))
+		// startIndex := (page - 1) * recordPerPage
+		// startIndex, err = strconv.Atoi(c.Query("startIndex"))
 
 		matchStage := bson.D{{"$match", bson.D{{}}}}
 
@@ -165,7 +180,7 @@ func GetUsers() gin.HandlerFunc {
 			{"$project", bson.D{
 				{"_id", 0},
 				{"total_count", 1},
-				{"user_items", bson.D{{"$slice", []interface{}{"$data", startIndex, recordPerPage}}}},
+				{"user_items", bson.D{{"$slice", bson.A{"$data", (page - 1) * recordPerPage, recordPerPage}}}},
 			},
 			}}
 
