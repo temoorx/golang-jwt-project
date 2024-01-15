@@ -89,7 +89,7 @@ func SignUp() gin.HandlerFunc {
 		}
 
 		cancel()
-		c.JSON(http.StatusOK, resultInsertionNumber)
+		c.JSON(http.StatusOK, gin.H{"message": "User created successfully", "insertedId": resultInsertionNumber.InsertedID})
 	}
 }
 
