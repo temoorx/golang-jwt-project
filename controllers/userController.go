@@ -126,8 +126,9 @@ func Login() gin.HandlerFunc {
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		}
-		c.JSON(http.StatusOK, foundUser)
-
+		// c.JSON(http.StatusOK, foundUser)
+		// Include a success message along with the user data
+		c.JSON(http.StatusOK, gin.H{"message": "Login successful", "user": foundUser})
 	}
 
 }
